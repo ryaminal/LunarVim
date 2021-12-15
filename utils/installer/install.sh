@@ -378,13 +378,7 @@ function setup_lvim() {
 
   cp "$LUNARVIM_BASE_DIR/utils/installer/config.example.lua" "$LUNARVIM_CONFIG_DIR/config.lua"
 
-  echo "Preparing Packer setup"
-
-  "$INSTALL_PREFIX/bin/lvim" --headless \
-    -c 'autocmd User PackerComplete quitall' \
-    -c 'PackerSync'
-
-  echo "Packer setup complete"
+  nvim -u "$LUNARVIM_BASE_DIR/init_update.lua" --noplugin -n -i NONE --headless
 }
 
 function print_logo() {

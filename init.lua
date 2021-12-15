@@ -5,6 +5,8 @@ if not vim.tbl_contains(vim.opt.rtp:get(), base_dir) then
   vim.opt.rtp:append(base_dir)
 end
 
+require "lvim.utils.headless_fix"
+
 require("lvim.bootstrap"):init(base_dir)
 
 require("lvim.config"):load()

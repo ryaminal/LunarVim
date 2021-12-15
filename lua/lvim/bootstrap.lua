@@ -1,3 +1,4 @@
+---@class bootstrap
 local M = {}
 
 if vim.fn.has "nvim-0.6" ~= 1 then
@@ -61,14 +62,16 @@ function _G.get_cache_dir()
 end
 
 ---Initialize the `&runtimepath` variables and prepare for startup
----@return table
+---@return bootstrap
 function M:init(base_dir)
   self.runtime_dir = get_runtime_dir()
   self.config_dir = get_config_dir()
   self.cache_dir = get_cache_dir()
   self.pack_dir = join_paths(self.runtime_dir, "site", "pack")
   self.packer_install_dir = join_paths(self.runtime_dir, "site", "pack", "packer", "start", "packer.nvim")
+  self.core_install_dir = join_paths(self.runtime_dir, "core")
   self.packer_cache_path = join_paths(self.config_dir, "plugin", "packer_compiled.lua")
+  self.lua_cache_path = join_paths(self.cache_dir, "lvim_cache")
 
   ---Get the full path to LunarVim's base directory
   ---@return string
@@ -96,7 +99,7 @@ function M:init(base_dir)
   if not in_headless then
     _G.PLENARY_DEBUG = false
     require("lvim.impatient").setup {
-      path = join_paths(self.cache_dir, "lvim_cache"),
+      path = self.lua_cache_path,
       enable_profiling = true,
     }
   end
@@ -107,6 +110,22 @@ function M:init(base_dir)
     package_root = self.pack_dir,
     install_path = self.packer_install_dir,
   }
+
+  -- patch Packer's guess_dir_type to support custom installs using symlinks
+  local guess_dir_type = require("packer.plugin_utils").guess_dir_type
+  require("packer.plugin_utils").guess_dir_type = function(dir)
+    local type = guess_dir_type(dir)
+    -- this is a false positive for custom plugins that use symlinks, fix it
+    if type == require("packer.plugin_utils").local_plugin_type then
+      local path = vim.loop.fs_readlink(dir)
+      if not path then
+        return type
+      end
+      if path:find(self.core_install_dir) then
+        return require("packer.plugin_utils").custom_plugin_type
+      end
+    end
+  end
 
   return self
 end

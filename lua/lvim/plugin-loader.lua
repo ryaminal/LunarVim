@@ -79,13 +79,13 @@ function plugin_loader.load(configurations)
     return
   end
   local status_ok, _ = xpcall(function()
-    packer.startup(function(use)
-      for _, plugins in ipairs(configurations) do
-        for _, plugin in ipairs(plugins) do
-          use(plugin)
-        end
+    packer.reset()
+    local use = packer.use
+    for _, plugins in ipairs(configurations) do
+      for _, plugin in ipairs(plugins) do
+        use(plugin)
       end
-    end)
+    end
   end, debug.traceback)
   if not status_ok then
     Log:warn "problems detected while loading plugins' configurations"
@@ -93,8 +93,15 @@ function plugin_loader.load(configurations)
   end
 
   -- Colorscheme must get called after plugins are loaded or it will break new installs.
-  vim.g.colors_name = lvim.colorscheme
-  vim.cmd("colorscheme " .. lvim.colorscheme)
+  -- Needs to be caught in case the colorscheme is invalid, but it shouldn't break things
+  status_ok, _ = xpcall(function()
+    vim.g.colors_name = lvim.colorscheme
+    vim.cmd("colorscheme " .. lvim.colorscheme)
+  end, debug.traceback)
+  if not status_ok then
+    Log:warn("unable to find colorscheme " .. lvim.colorscheme)
+    Log:trace(debug.traceback())
+  end
 end
 
 function plugin_loader.get_core_plugins()
