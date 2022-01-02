@@ -55,9 +55,6 @@ local plugins = {
   {
     "rcarriga/nvim-notify",
     commit = commit.nvim_notify,
-    config = function()
-      require("lvim.core.notify").setup()
-    end,
     disable = not lvim.builtin.notify.active,
     config = function()
       require("lvim.core.notify").setup()

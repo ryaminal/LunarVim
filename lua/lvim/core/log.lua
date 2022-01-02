@@ -58,31 +58,6 @@ function Log:init()
     )
   end
 
-  if is_notify_available() then
-    table.insert(
-      lvim_log.lvim.sinks,
-      structlog.sinks.NvimNotify(Log.levels.INFO, {
-        processors = {
-          notify_handler.default_namer,
-          notify_handler.params_injecter,
-        },
-        formatter = structlog.formatters.Format( --
-          "%s",
-          { "msg" },
-          { blacklist_all = true }
-        ),
-        params_map = {
-          icon = "icon",
-          keep = "keep",
-          on_open = "on_open",
-          on_close = "on_close",
-          timeout = "timeout",
-          title = "title",
-        },
-      })
-    )
-  end
-
   structlog.configure(lvim_log)
   local logger = structlog.get_logger "lvim"
 
