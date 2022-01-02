@@ -63,7 +63,7 @@ end
 
 ---Initialize the `&runtimepath` variables and prepare for startup
 ---@return bootstrap
-function M:init(base_dir)
+function M:init(base_dir, updating)
   self.runtime_dir = get_runtime_dir()
   self.config_dir = get_config_dir()
   self.cache_dir = get_cache_dir()
@@ -109,22 +109,16 @@ function M:init(base_dir)
   require("lvim.plugin-loader").init {
     package_root = self.pack_dir,
     install_path = self.packer_install_dir,
+    core_install_dir = self.core_install_dir,
+    updating = updating,
   }
 
-  -- patch Packer's guess_dir_type to support custom installs using symlinks
-  local guess_dir_type = require("packer.plugin_utils").guess_dir_type
-  require("packer.plugin_utils").guess_dir_type = function(dir)
-    local type = guess_dir_type(dir)
-    -- this is a false positive for custom plugins that use symlinks, fix it
-    if type == require("packer.plugin_utils").local_plugin_type then
-      local path = vim.loop.fs_readlink(dir)
-      if not path then
-        return type
-      end
-      if path:find(self.core_install_dir) then
-        return require("packer.plugin_utils").custom_plugin_type
-      end
-    end
+  if updating then
+    require("lvim.updater").init {
+      core_install_dir = self.core_install_dir,
+      packer_cache_path = self.packer_cache_path,
+      lua_cache_path = self.lua_cache_path,
+    }
   end
 
   return self

@@ -12,6 +12,8 @@ function plugin_loader.init(opts)
 
   local install_path = opts.install_path or vim.fn.stdpath "data" .. "/site/pack/packer/start/packer.nvim"
   local package_root = opts.package_root or vim.fn.stdpath "data" .. "/site/pack"
+  local core_install_dir = opts.core_install_dir or vim.fn.stdpath "data" .. "/core"
+  local updating = opts.updating or false
 
   if vim.fn.empty(vim.fn.glob(install_path)) > 0 then
     vim.fn.system { "git", "clone", "--depth", "1", "https://github.com/wbthomason/packer.nvim", install_path }
@@ -27,7 +29,13 @@ function plugin_loader.init(opts)
   packer.init {
     package_root = package_root,
     compile_path = compile_path,
-    log = { level = log_level },
+    auto_reload_compiled = not updating,
+    auto_clean = not updating,
+    log = {
+      level = log_level,
+      highlights = not updating,
+      use_file = not updating,
+    },
     git = {
       clone_timeout = 300,
       subcommands = {
@@ -36,12 +44,31 @@ function plugin_loader.init(opts)
       },
     },
     max_jobs = 50,
-    display = {
+    display = not updating and {
       open_fn = function()
         return require("packer.util").float { border = "rounded" }
       end,
-    },
+    } or nil,
   }
+
+  -- patch Packer's guess_dir_type to support custom installs using symlinks
+  local guess_dir_type = require("packer.plugin_utils").guess_dir_type
+  require("packer.plugin_utils").guess_dir_type = function(dir)
+    local type = guess_dir_type(dir)
+    -- this is a false positive for custom plugins that use symlinks, fix it
+    if type == require("packer.plugin_utils").local_plugin_type then
+      local path = vim.loop.fs_readlink(dir)
+      if not path then
+        return type
+      end
+
+      if path:find(core_install_dir) then
+        return require("packer.plugin_utils").custom_plugin_type
+      end
+    end
+
+    return type
+  end
 
   vim.cmd [[autocmd User PackerComplete lua require('lvim.utils.hooks').run_on_packer_complete()]]
 end

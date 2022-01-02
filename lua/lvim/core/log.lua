@@ -36,20 +36,52 @@ function Log:init()
             { level = structlog.formatters.FormatColorizer.color_level() }
           ),
         }),
-        structlog.sinks.File(Log.levels.TRACE, logfile, {
-          processors = {
-            structlog.processors.Namer(),
-            structlog.processors.StackWriter({ "line", "file" }, { max_parents = 3, stack_level = 2 }),
-            structlog.processors.Timestamper "%H:%M:%S",
-          },
-          formatter = structlog.formatters.Format( --
-            "%s [%-5s] %s: %-30s",
-            { "timestamp", "level", "logger_name", "msg" }
-          ),
-        }),
       },
     },
   }
+
+  -- if the cache dir doesn't exist, the file sink causes a crash
+  if vim.loop.fs_stat(get_cache_dir()) then
+    table.insert(
+      lvim_log.lvim.sinks,
+      structlog.sinks.File(Log.levels.TRACE, logfile, {
+        processors = {
+          structlog.processors.Namer(),
+          structlog.processors.StackWriter({ "line", "file" }, { max_parents = 3, stack_level = 2 }),
+          structlog.processors.Timestamper "%H:%M:%S",
+        },
+        formatter = structlog.formatters.Format( --
+          "%s [%-5s] %s: %-30s",
+          { "timestamp", "level", "logger_name", "msg" }
+        ),
+      })
+    )
+  end
+
+  if is_notify_available() then
+    table.insert(
+      lvim_log.lvim.sinks,
+      structlog.sinks.NvimNotify(Log.levels.INFO, {
+        processors = {
+          notify_handler.default_namer,
+          notify_handler.params_injecter,
+        },
+        formatter = structlog.formatters.Format( --
+          "%s",
+          { "msg" },
+          { blacklist_all = true }
+        ),
+        params_map = {
+          icon = "icon",
+          keep = "keep",
+          on_open = "on_open",
+          on_close = "on_close",
+          timeout = "timeout",
+          title = "title",
+        },
+      })
+    )
+  end
 
   structlog.configure(lvim_log)
   local logger = structlog.get_logger "lvim"

@@ -7,17 +7,23 @@ end
 
 require "lvim.utils.headless_fix"
 
-require("lvim.bootstrap"):init(base_dir)
+-- This is only defined when updating using `lvim --update`
+---@diagnostic disable-next-line: undefined-field
+local updating = _G.__lvim_updating or false
 
-require("lvim.config"):load()
+require("lvim.bootstrap"):init(base_dir, updating)
 
-local plugins = require "lvim.plugins"
-require("lvim.plugin-loader").load { plugins, lvim.plugins }
+if not updating then
+  require("lvim.config"):load()
 
-local Log = require "lvim.core.log"
-Log:debug "Starting LunarVim"
+  local plugins = require "lvim.plugins"
+  require("lvim.plugin-loader").load { plugins, lvim.plugins }
 
-local commands = require "lvim.core.commands"
-commands.load(commands.defaults)
+  local Log = require "lvim.core.log"
+  Log:debug "Starting LunarVim"
 
-require("lvim.lsp").setup()
+  local commands = require "lvim.core.commands"
+  commands.load(commands.defaults)
+
+  require("lvim.lsp").setup()
+end
