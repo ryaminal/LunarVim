@@ -10,6 +10,8 @@ local wrap = a.wrap
 local jobs = require "packer.jobs"
 local result = require "packer.result"
 local async_stat = wrap(uv.fs_stat)
+local async_readdir = wrap(uv.fs_readdir)
+local async_closedir = wrap(uv.fs_closedir)
 
 local path_sep = uv.os_uname().version:match "Windows" and "\\" or "/"
 
@@ -48,15 +50,21 @@ local function get_lvim_after_user_config()
   return user_lvim
 end
 
+local function plug_extracted_dir(plug)
+  local commit = plug.commit
+  local repo = plug[1]
+  local name = repo:match "/(%S*)"
+  return name .. "-" .. commit
+end
+
 ---downloads and installs from a core plugin entry
 ---@param plug table plugin entry
 ---@return function
 local function download_and_install(plug, core_install_dir, download_dir)
   local commit = plug.commit
   local repo = plug[1]
-  local name = repo:match "/(%S*)"
   local zip_name = commit .. ".zip"
-  local extracted_dir = join_paths(core_install_dir, name .. "-" .. commit)
+  local extracted_dir = join_paths(core_install_dir, plug_extracted_dir(plug))
 
   return async(function()
     if not plug.commit then
@@ -80,6 +88,54 @@ local function download_and_install(plug, core_install_dir, download_dir)
   end)
 end
 
+local function opendir(dir, callback)
+  uv.fs_opendir(dir, callback, 9999)
+end
+
+local async_opendir = a.wrap(opendir)
+
+-- don't want to remove any unintended directory
+local function safer_rm_rf(parent_dir, child_dir)
+  local path_to_remove = parent_dir .. path_sep .. child_dir
+  if parent_dir == nil or #parent_dir == 0 then
+    return
+  end
+  if child_dir == nil or #child_dir == 0 then
+    return
+  end
+
+  vim.fn.delete(path_to_remove, "rf")
+end
+
+local function cleanup_stale(core_install_dir, core_plugins)
+  return async(function()
+    local err, dir = await(async_opendir(core_install_dir))
+    assert(not err, "unable to open core plugin install directory")
+    local entries
+    err, entries = await(async_readdir(dir))
+    assert(not err, "unable to read core plugin install directory")
+    await(async_closedir(dir))
+
+    if entries then
+      local plugin_lookup = {}
+      for _, plug in ipairs(core_plugins) do
+        plugin_lookup[plug_extracted_dir(plug)] = true
+      end
+
+      await(a.main)
+      for _, entry in ipairs(entries) do
+        local plugin_name = entry.name
+        if plugin_name ~= nil and plugin_lookup[plugin_name] == nil then
+          safer_rm_rf(core_install_dir, plugin_name)
+        end
+      end
+    end
+
+    print("Cleaned up stale plugins in:", timer:stop(), "ms")
+    timer:start()
+  end)
+end
+
 function M.init(opts)
   local core_install_dir = opts.core_install_dir or vim.fn.stdpath "data" .. "/core"
   assert(vim.fn.executable "curl", "curl is not installed")
@@ -97,13 +153,17 @@ function M.init(opts)
   -- prevent packer from loading plugins on run hooks
   local load_plugin = require("packer.plugin_utils").load_plugin
   require("packer.plugin_utils").load_plugin = function() end
-  print "Downloading core plugins..."
 
   local packer_stage = 0
 
   async(function()
     timer:start()
-    local tasks = {}
+    print "Cleaning up stale plugins..."
+    print "Downloading core plugins..."
+
+    local tasks = {
+      cleanup_stale(core_install_dir, core_plugins),
+    }
     for _, plug in ipairs(core_plugins) do
       table.insert(tasks, download_and_install(plug, core_install_dir, download_dir))
     end
