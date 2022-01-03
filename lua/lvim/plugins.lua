@@ -277,8 +277,13 @@ local plugins = {
   },
 }
 
-for _, plugin in ipairs(plugins) do
-  core_plugin_type.setup(plugin)
+if os.getenv "LVIM_DEV" ~= "1" then
+  for _, plugin in ipairs(plugins) do
+    -- packer already exists, don't replace it
+    if plugin[1] ~= "wbthomason/packer.nvim" then
+      core_plugin_type.setup(plugin)
+    end
+  end
 end
 
 return plugins

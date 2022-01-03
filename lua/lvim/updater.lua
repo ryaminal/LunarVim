@@ -136,6 +136,10 @@ local function cleanup_stale(core_install_dir, core_plugins)
   end)
 end
 
+function M:task_update(plugin_name, status)
+  print(plugin_name .. " - " .. status)
+end
+
 function M.init(opts)
   local core_install_dir = opts.core_install_dir or vim.fn.stdpath "data" .. "/core"
   assert(vim.fn.executable "curl", "curl is not installed")
@@ -152,6 +156,7 @@ function M.init(opts)
 
   -- prevent packer from loading plugins on run hooks
   local load_plugin = require("packer.plugin_utils").load_plugin
+  local post_update_hook = require("packer.plugin_utils").post_update_hook
   require("packer.plugin_utils").load_plugin = function() end
 
   local packer_stage = 0
@@ -159,20 +164,28 @@ function M.init(opts)
   async(function()
     timer:start()
     print "Cleaning up stale plugins..."
-    print "Downloading core plugins..."
 
-    local tasks = {
-      cleanup_stale(core_install_dir, core_plugins),
-    }
-    for _, plug in ipairs(core_plugins) do
-      table.insert(tasks, download_and_install(plug, core_install_dir, download_dir))
+    if os.getenv "LVIM_DEV" ~= "1" then
+      print "Downloading core plugins..."
+
+      local tasks = {
+        cleanup_stale(core_install_dir, core_plugins),
+      }
+
+      for _, plug in ipairs(core_plugins) do
+        -- packer already exists, don't download it
+        if plug[1] ~= "wbthomason/packer.nvim" then
+          table.insert(tasks, download_and_install(plug, core_install_dir, download_dir))
+        end
+      end
+      a.wait_all(unpack(tasks))
+      await(a.main)
+
+      print("Downloaded core plugins in:", timer:stop(), "ms")
+      vim.fn.delete(download_dir, "rf")
+      vim.fn.delete(download_dir, "d")
     end
-    a.wait_all(unpack(tasks))
-    await(a.main)
 
-    print("Downloaded core plugins in:", timer:stop(), "ms")
-    vim.fn.delete(download_dir, "rf")
-    vim.fn.delete(download_dir, "d")
     if opts.packer_cache_path then
       vim.fn.delete(opts.packer_cache_path)
     end
@@ -195,6 +208,9 @@ function M.init(opts)
       elseif packer_stage == 1 then
         for _, core_plugin in pairs(core_plugins) do
           pcall(load_plugin, core_plugin)
+        end
+        for _, core_plugin in pairs(core_plugins) do
+          await(post_update_hook(core_plugin, M))
         end
         print("Loaded core plugins in:", timer:stop(), "ms")
         packer_stage = 2
