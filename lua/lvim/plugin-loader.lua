@@ -30,7 +30,7 @@ function plugin_loader.init(opts)
     package_root = package_root,
     compile_path = compile_path,
     auto_reload_compiled = not updating,
-    auto_clean = not updating,
+    auto_clean = true,
     log = {
       level = log_level,
       highlights = not updating,

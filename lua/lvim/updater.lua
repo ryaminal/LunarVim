@@ -22,6 +22,7 @@ end
 function timer:stop()
   return (uv.hrtime() - self.time) * 1e-6
 end
+timer.__index = timer
 
 local function mkdir_tmp()
   local tmpFilePath = os.tmpname()
@@ -140,6 +141,36 @@ function M:task_update(plugin_name, status)
   print(plugin_name .. " - " .. status)
 end
 
+local packer_display_open = require("packer.display").open
+require("packer.display").open = function(self)
+  local disp = packer_display_open(self)
+  local total = 0
+  local finished = 0
+
+  local function print_update()
+    local line = "Installed " .. finished .. " of " .. total
+    vim.schedule(function()
+      vim.fn.chansend(1, { "\r" .. line .. "\n" })
+    end)
+  end
+
+  disp.task_succeeded = function()
+    finished = finished + 1
+    print_update()
+  end
+  disp.task_failed = function(_, plugin_name)
+    print("!! " .. plugin_name .. ": failed to install!")
+    finished = finished + 1
+    print_update()
+  end
+  disp.task_start = function()
+    require("packer.display").status.running = true
+    total = total + 1
+    print_update()
+  end
+  return disp
+end
+
 function M.init(opts)
   local core_install_dir = opts.core_install_dir or vim.fn.stdpath "data" .. "/core"
   assert(vim.fn.executable "curl", "curl is not installed")
@@ -162,10 +193,14 @@ function M.init(opts)
   local packer_stage = 0
 
   async(function()
-    timer:start()
-    print "Cleaning up stale plugins..."
+    -- enable all core plugins initially until after the user config is loaded
+    for _, plug in ipairs(core_plugins) do
+      plug.disable = false
+    end
 
     if os.getenv "LVIM_DEV" ~= "1" then
+      timer:start()
+      print "Cleaning up stale plugins..."
       print "Downloading core plugins..."
 
       local tasks = {
@@ -189,9 +224,6 @@ function M.init(opts)
     if opts.packer_cache_path then
       vim.fn.delete(opts.packer_cache_path)
     end
-    if opts.lua_cache_path then
-      vim.fn.delete(opts.lua_cache_path)
-    end
 
     local plugin_loader = require "lvim.plugin-loader"
     plugin_loader.load { core_plugins }
@@ -199,7 +231,7 @@ function M.init(opts)
     packer.on_complete = function() end
     packer.on_compile_done = function()
       if packer_stage == 0 then
-        print("Installed core plugins in:", timer:stop(), "ms")
+        print("\rInstalled core plugins in:", timer:stop(), "ms")
         packer_stage = 1
 
         timer:start()
@@ -220,19 +252,40 @@ function M.init(opts)
         print "Installing user plugins..."
         timer:start()
 
-        for _, entry in ipairs(user_lvim.plugins) do
-          print("-", entry[1])
+        -- reload active status after user config
+        for builtin_name, user_builtin in pairs(user_lvim.builtin) do
+          lvim.builtin[builtin_name].active = user_builtin.active
         end
+        package.loaded["lvim.plugins"] = nil
+        local user_core_plugins = require "lvim.plugins"
 
         packer.on_complete = packer.on_compile_done
-        require("lvim.plugin-loader").load { core_plugins, user_lvim.plugins }
+        require("lvim.plugin-loader").load { user_core_plugins, user_lvim.plugins }
         packer.install()
       elseif packer_stage == 2 then
         packer_stage = 3
         packer.compile()
       elseif packer_stage == 3 then
-        print("Installed user plugins in:", timer:stop(), "ms")
+        print("\rInstalled user plugins in:", timer:stop(), "ms")
+        timer:start()
+        print "Generating LSP templates..."
+        require("lvim.lsp.templates").generate_templates()
+        print("Generated LSP templates in:", timer:stop(), "ms")
+
+        -- this caches BufEnter and prevents barbar from behaving strange on the first run
+        vim.g.bufferline.auto_hide = false
+        require("bufferline.state").set_offset(0)
+        require("nvim-tree").find_file(true)
+
+        print("Rebuilding cache at " .. opts.lua_cache_path)
+        if opts.lua_cache_path then
+          require("lvim.impatient").dirty = true
+          require("lvim.impatient").save_cache()
+        end
+
         vim.cmd [[qall!]]
+      else
+        print("UNKNOWN STAGE: " .. packer_stage)
       end
     end
 

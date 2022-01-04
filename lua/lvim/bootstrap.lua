@@ -11,7 +11,6 @@ end
 
 local uv = vim.loop
 local path_sep = uv.os_uname().version:match "Windows" and "\\" or "/"
-local in_headless = #vim.api.nvim_list_uis() == 0
 
 ---Join path segments that were passed as input
 ---@return string
@@ -95,13 +94,13 @@ function M:init(base_dir, updating)
     vim.cmd [[let &packpath = &runtimepath]]
   end
 
-  -- FIXME: currently unreliable in unit-tests
-  if not in_headless then
-    _G.PLENARY_DEBUG = false
-    require("lvim.impatient").setup {
-      path = self.lua_cache_path,
-      enable_profiling = true,
-    }
+  _G.PLENARY_DEBUG = false
+  require("lvim.impatient").setup {
+    path = self.lua_cache_path,
+    enable_profiling = true,
+  }
+  if updating then
+    require("lvim.impatient").clear_cache()
   end
 
   require("lvim.config"):init()
